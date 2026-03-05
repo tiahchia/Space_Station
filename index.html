@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbital Command</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --hud-cyan: #00ff9f;
+            --hud-amber: #ffb000;
+            --hud-red: #ff0040;
+            --hud-bg: #0a0f14;
+        }
+        
+        body {
+            background: var(--hud-bg);
+            color: var(--hud-cyan);
+            font-family: 'Share Tech Mono', monospace;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Scanlines */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.2) 50%,
+                rgba(0,0,0,0.2)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0.6;
+        }
+        
+        /* CRT Flicker */
+        .crt::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(18, 16, 16, 0.1);
+            opacity: 0;
+            z-index: 999;
+            pointer-events: none;
+            animation: flicker 0.15s infinite;
+        }
+        
+        @keyframes flicker {
+            0% { opacity: 0.27861; }
+            5% { opacity: 0.34769; }
+            10% { opacity: 0.23604; }
+            15% { opacity: 0.10626; }
+            20% { opacity: 0.18128; }
+            25% { opacity: 0.10626; }
+            30% { opacity: 0.18128; }
+            35% { opacity: 0.23604; }
+            40% { opacity: 0.08594; }
+            45% { opacity: 0.18713; }
+            50% { opacity: 0.27861; }
+            55% { opacity: 0.14678; }
+            60% { opacity: 0.23604; }
+            65% { opacity: 0.08594; }
+            70% { opacity: 0.09056; }
+            75% { opacity: 0.12688; }
+            80% { opacity: 0.27861; }
+            85% { opacity: 0.13634; }
+            90% { opacity: 0.1216; }
+            95% { opacity: 0.27861; }
+            100% { opacity: 0.27861; }
+        }
+        
+        /* Main Layout */
+        .command-center {
+            display: grid;
+            grid-template-columns: 250px 1fr 250px;
+            grid-template-rows: 80px 1fr 150px;
+            height: 100vh;
+            gap: 2px;
+            background: rgba(0,255,159,0.1);
+            padding: 10px;
+        }
+        
+        /* HUD Corners */
+        .hud-corner {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--hud-cyan);
+        }
+        .tl { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+        .tr { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+        .bl { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+        .br { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+        
+        /* Panels */
+        .panel {
+            background: rgba(10, 15, 20, 0.9);
+            border: 1px solid rgba(0,255,159,0.3);
+            position: relative;
+            padding: 1rem;
+            overflow: hidden;
+        }
+        
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--hud-cyan), transparent);
+            animation: scan 3s linear infinite;
+        }
+        
+        @keyframes scan {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(0,255,159,0.2);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--hud-cyan);
+            box-shadow: 0 0 10px var(--hud-cyan);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        /* Header */
+        .main-header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+        
+        .station-name {
+            font-size: 1.5rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+        }
+        
+        .system-time {
+            font-size: 1.2rem;
+            color: var(--hud-amber);
+        }
+        
+        /* Radar */
+        .radar-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1;
+            border: 2px solid var(--hud-cyan);
+            border-radius: 50%;
+            margin: 1rem 0;
+            overflow: hidden;
+        }
+        
+        .radar-grid {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            height: 90%;
+            border: 1px solid rgba(0,255,159,0.2);
+            border-radius: 50%;
+        }
+        
+        .radar-sweep {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--hud-cyan), transparent);
+            transform-origin: left center;
+            animation: radar-rotate 4s linear infinite;
+        }
+        
+        @keyframes radar-rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .radar-blip {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: var(--hud-red);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--hud-red);
+            animation: blip 2s infinite;
+        }
+        
+        @keyframes blip {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+        
+        /* Data Lists */
+        .data-list {
+            list-style: none;
+            font-size: 0.85rem;
+        }
+        
+        .data-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(0,255,159,0.1);
+        }
+        
+        .data-label { color: rgba(0,255,159,0.6); }
+        .data-value { color: var(--hud-cyan); }
+        .data-value.warning { color: var(--hud-amber); }
+        .data-value.critical { color: var(--hud-red); animation: flash 1s infinite; }
+        
+        @keyframes flash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        /* Terminal */
+        .terminal {
+            grid-column: 1 / -1;
+            background: rgba(0,0,0,0.8);
+            padding: 1rem;
+            overflow-y: auto;
+            font-size: 0.9rem;
+        }
+        
+        .terminal-line {
+            margin-bottom: 0.5rem;
+            opacity: 0;
+            animation: typeIn 0.3s forwards;
+        }
+        
+        @keyframes typeIn {
+            to { opacity: 1; }
+        }
+        
+        .terminal-prompt { color: var(--hud-cyan); }
+        .terminal-input {
+            background: transparent;
+            border: none;
+            color: var(--hud-cyan);
+            font-family: inherit;
+            font-size: inherit;
+            width: 80%;
+            outline: none;
+            caret-color: var(--hud-cyan);
+        }
+        
+        /* Progress Bars */
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid rgba(0,255,159,0.3);
+            position: relative;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--hud-cyan), var(--hud-amber));
+            width: 0%;
+            transition: width 0.5s;
+            position: relative;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 20px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5));
+        }
+        
+        /* Warning Banner */
+        .warning-banner {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,0,64,0.9);
+            color: white;
+            padding: 2rem 4rem;
+            border: 2px solid var(--hud-red);
+            text-align: center;
+            display: none;
+            z-index: 2000;
+            animation: warning-pulse 1s infinite;
+        }
+        
+        @keyframes warning-pulse {
+            0%, 100% { box-shadow: 0 0 20px var(--hud-red); }
+            50% { box-shadow: 0 0 40px var(--hud-red); }
+        }
+        
+        .warning-banner.active { display: block; }
+        
+        /* Button Grid */
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        
+        .hud-btn {
+            background: rgba(0,255,159,0.1);
+            border: 1px solid rgba(0,255,159,0.3);
+            color: var(--hud-cyan);
+            padding: 0.5rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            transition: all 0.3s;
+        }
+        
+        .hud-btn:hover {
+            background: rgba(0,255,159,0.2);
+            box-shadow: 0 0 10px rgba(0,255,159,0.3);
+        }
+        
+        .hud-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .hud-btn.warning {
+            border-color: var(--hud-amber);
+            color: var(--hud-amber);
+        }
+        
+        .hud-btn.danger {
+            border-color: var(--hud-red);
+            color: var(--hud-red);
+        }
+    </style>
+</head>
+<body class="crt">
+    <div class="scanlines"></div>
+    
+    <div class="warning-banner" id="warningBanner">
+        <h2>⚠️ WARNING ⚠️</h2>
+        <p>HULL BREACH DETECTED - SECTOR 7</p>
+    </div>
+    
+    <div class="command-center">
+        <header class="panel main-header">
+            <div class="hud-corner tl"></div>
+            <div class="hud-corner tr"></div>
+            <div class="hud-corner bl"></div>
+            <div class="hud-corner br"></div>
+            <div class="station-name">★ ORBITAL STATION ALPHA ★</div>
+            <div class="system-time" id="systemTime">00:00:00</div>
+        </header>
+        
+        <aside class="panel">
+            <div class="hud-corner tl"></div>
+            <div class="hud-corner tr"></div>
+            <div class="hud-corner bl"></div>
+            <div class="hud-corner br"></div>
+            <div class="panel-header">
+                <span>System Status</span>
+                <div class="status-indicator"></div>
+            </div>
+            <ul class="data-list">
+                <li><span class="data-label">Life Support</span><span class="data-value">98%</span></li>
+                <li><span class="data-label">Gravity Gen</span><span class="data-value">100%</span></li>
+                <li><span class="data-label">Oxygen</span><span class="data-value warning">72%</span></li>
+                <li><span class="data-label">Power</span><span class="data-value">94%</span></li>
+                <li><span class="data-label">Shields</span><span class="data-value">ONLINE</span></li>
+                <li><span class="data-label">Weapons</span><span class="data-value">STANDBY</span></li>
+            </ul>
+            
+            <div class="panel-header" style="margin-top: 2rem;">
+                <span>Resources</span>
+            </div>
+            <div style="margin-bottom: 0.5rem; font-size: 0.8rem;">Fuel Cells</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: 65%;"></div>
+            </div>
+            <div style="margin-bottom: 0.5rem; font-size: 0.8rem;">Coolant</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: 40%; background: linear-gradient(90deg, var(--hud-amber), var(--hud-red));"></div>
+            </div>
+        </aside>
+        
+        <main class="panel">
+            <div class="hud-corner tl"></div>
+            <div class="hud-corner tr"></div>
+            <div class="hud-corner bl"></div>
+            <div class="hud-corner br"></div>
+            <div class="panel-header">
+                <span>Long Range Scanner</span>
+                <span style="font-size: 0.8rem; color: var(--hud-amber);">RANGE: 100,000 KM</span>
+            </div>
+            <div class="radar-container" id="radar">
+                <div class="radar-grid"></div>
+                <div class="radar-grid" style="width: 60%; height: 60%;"></div>
+                <div class="radar-grid" style="width: 30%; height: 30%;"></div>
+                <div class="radar-sweep"></div>
+            </div>
+            <div class="button-grid">
+                <button class="hud-btn" onclick="scanSector()">Scan Sector</button>
+                <button class="hud-btn" onclick="zoomRadar()">Zoom +/-</button>
+                <button class="hud-btn warning" onclick="toggleWarning()">Test Alert</button>
+                <button class="hud-btn danger" onclick="selfDestruct()">Self Destruct</button>
+            </div>
+        </main>
+        
+        <aside class="panel">
+            <div class="hud-corner tl"></div>
+            <div class="hud-corner tr"></div>
+            <div class="hud-corner bl"></div>
+            <div class="hud-corner br"></div>
+            <div class="panel-header">
+                <span>Crew Status</span>
+                <div class="status-indicator"></div>
+            </div>
+            <ul class="data-list">
+                <li><span class="data-label">Commander</span><span class="data-value">ON BRIDGE</span></li>
+                <li><span class="data-label">Pilot</span><span class="data-value">ON BRIDGE</span></li>
+                <li><span class="data-label">Engineer</span><span class="data-value">ENGINE ROOM</span></li>
+                <li><span class="data-label">Science</span><span class="data-value">LAB 3</span></li>
+                <li><span class="data-label">Security</span><span class="data-value">PATROL</span></li>
+                <li><span class="data-label">Medical</span><span class="data-value">BAY 2</span></li>
+            </ul>
+            
+            <div class="panel-header" style="margin-top: 2rem;">
+                <span>Alerts</span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--hud-amber); margin-bottom: 0.5rem;">
+                ► Scheduled maintenance in T-minus 04:20:00
+            </div>
+            <div style="font-size: 0.8rem; color: var(--hud-cyan);">
+                ► Incoming transmission from Earth...
+            </div>
+        </aside>
+        
+        <section class="panel terminal">
+            <div class="hud-corner tl"></div>
+            <div class="hud-corner tr"></div>
+            <div class="hud-corner bl"></div>
+            <div class="hud-corner br"></div>
+            <div id="terminalOutput"></div>
+            <div class="terminal-line">
+                <span class="terminal-prompt">CMD></span>
+                <input type="text" class="terminal-input" id="terminalInput" placeholder="Enter command..." autofocus>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Clock
+        function updateTime() {
+            const now = new Date();
+            const timeStr = now.toISOString().substr(11, 8);
+            document.getElementById('systemTime').textContent = timeStr;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+        
+        // Terminal
+        const terminalOutput = document.getElementById('terminalOutput');
+        const terminalInput = document.getElementById('terminalInput');
+        
+        function addTerminalLine(text, type = 'info') {
+            const line = document.createElement('div');
+            line.className = 'terminal-line';
+            const timestamp = new Date().toISOString().substr(11, 8);
+            let color = 'var(--hud-cyan)';
+            if (type === 'warning') color = 'var(--hud-amber)';
+            if (type === 'error') color = 'var(--hud-red)';
+            if (type === 'success') color = '#00ff00';
+            
+            line.innerHTML = `<span style="color: rgba(0,255,159,0.5);">[${timestamp}]</span> <span style="color: ${color};">${text}</span>`;
+            terminalOutput.appendChild(line);
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        }
+        
+        // Initial boot sequence
+        const bootSequence = [
+            { text: 'Initializing orbital systems...', delay: 0 },
+            { text: 'Loading navigation matrix...', delay: 300 },
+            { text: 'Establishing uplink with command...', delay: 600 },
+            { text: 'Life support systems: ONLINE', delay: 900, type: 'success' },
+            { text: 'Defense systems: STANDBY', delay: 1200 },
+            { text: 'Welcome, Commander.', delay: 1500, type: 'success' }
+        ];
+        
+        bootSequence.forEach(({text, delay, type}) => {
+            setTimeout(() => addTerminalLine(text, type), delay);
+        });
+        
+        // Command handling
+        terminalInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const cmd = terminalInput.value.trim().toLowerCase();
+                addTerminalLine(`> ${cmd}`);
+                
+                const commands = {
+                    'help': () => addTerminalLine('Available commands: status, scan, alert, clear, reboot'),
+                    'status': () => {
+                        addTerminalLine('All systems nominal.', 'success');
+                        addTerminalLine('Station orbit: Stable at 400km');
+                        addTerminalLine('Crew complement: 6/6');
+                    },
+                    'scan': () => {
+                        addTerminalLine('Initiating deep space scan...');
+                        setTimeout(() => addTerminalLine('Scan complete. No threats detected.', 'success'), 1500);
+                    },
+                    'alert': () => toggleWarning(),
+                    'clear': () => {
+                        terminalOutput.innerHTML = '';
+                        addTerminalLine('Terminal cleared.');
+                    },
+                    'reboot': () => {
+                        addTerminalLine('Reboot sequence initiated...', 'warning');
+                        setTimeout(() => location.reload(), 2000);
+                    }
+                };
+                
+                if (commands[cmd]) {
+                    commands[cmd]();
+                } else if (cmd) {
+                    addTerminalLine(`Unknown command: ${cmd}`, 'error');
+                }
+                
+                terminalInput.value = '';
+            }
+        });
+        
+        // Radar blips
+        function addBlip() {
+            const radar = document.getElementById('radar');
+            const blip = document.createElement('div');
+            blip.className = 'radar-blip';
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * 40 + 10;
+            const x = 50 + Math.cos(angle) * distance;
+            const y = 50 + Math.sin(angle) * distance;
+            blip.style.left = x + '%';
+            blip.style.top = y + '%';
+            radar.appendChild(blip);
+            
+            setTimeout(() => blip.remove(), 5000);
+        }
+        
+        setInterval(addBlip, 3000);
+        
+        // Button functions
+        function scanSector() {
+            addTerminalLine('Scanning sector 7...');
+            document.querySelector('.radar-sweep').style.animationDuration = '1s';
+            setTimeout(() => {
+                document.querySelector('.radar-sweep').style.animationDuration = '4s';
+                addTerminalLine('Sector scan complete.', 'success');
+            }, 3000);
+        }
+        
+        let zoomLevel = 1;
+        function zoomRadar() {
+            zoomLevel = zoomLevel === 1 ? 1.5 : 1;
+            document.getElementById('radar').style.transform = `scale(${zoomLevel})`;
+        }
+        
+        function toggleWarning() {
+            const banner = document.getElementById('warningBanner');
+            banner.classList.toggle('active');
+            if (banner.classList.contains('active')) {
+                addTerminalLine('WARNING: Hull breach simulation active!', 'error');
+            } else {
+                addTerminalLine('Warning cleared.', 'success');
+            }
+        }
+        
+        function selfDestruct() {
+            addTerminalLine('SELF DESTRUCT SEQUENCE INITIATED', 'error');
+            addTerminalLine('T-minus 60 seconds...', 'warning');
+            let count = 60;
+            const interval = setInterval(() => {
+                count--;
+                if (count % 10 === 0) addTerminalLine(`T-minus ${count}...`, 'error');
+                if (count <= 0) {
+                    clearInterval(interval);
+                    addTerminalLine('Just kidding. Systems secure.', 'success');
+                }
+            }, 1000);
+        }
+        
+        // Random system updates
+        setInterval(() => {
+            const events = [
+                'Solar flare detected. Shields holding.',
+                'Incoming data packet from probe.',
+                'Minor fluctuation in reactor core.',
+                'Automated maintenance cycle complete.'
+            ];
+            if (Math.random() > 0.7) {
+                addTerminalLine(events[Math.floor(Math.random() * events.length)]);
+            }
+        }, 10000);
+    </script>
+</body>
+</html>
